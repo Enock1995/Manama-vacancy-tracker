@@ -1,0 +1,65 @@
+{
+    "name": "matsouth-vacancy-tracker",
+    "version": "1.0.0",
+    "description": "Matabeleland South Province — Health Establishment Vacancy Tracker",
+    "author": {
+        "name": "Sir Enocks Cor Technologies",
+        "email": "dev@sirenocks.co.zw"
+    },
+    "main": "main.js",
+    "scripts": {
+        "start": "electron .",
+        "dev": "electron . --dev",
+        "dev:win": "electron . --dev",
+        "build": "electron-builder --win",
+        "build:dir": "electron-builder --win --dir"
+    },
+    "dependencies": {
+        "electron-store": "^8.1.0",
+        "electron-updater": "^6.1.7"
+    },
+    "devDependencies": {
+        "electron": "^28.0.0",
+        "electron-builder": "^24.9.1"
+    },
+    "build": {
+        "appId": "zw.gov.matsouth.vacancytracker",
+        "productName": "MatSouth Vacancy Tracker",
+        "copyright": "Copyright © 2024 Sir Enocks Cor Technologies",
+        "directories": {
+            "output": "dist-electron"
+        },
+        "files": [
+            "main.js",
+            "preload.js",
+            "splash.html",
+            "assets/**/*",
+            "../frontend/dist/**/*",
+            "node_modules/**/*"
+        ],
+        "win": {
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": ["x64"]
+                }
+            ],
+            "icon": "assets/icon.ico",
+            "requestedExecutionLevel": "requireAdministrator"
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true,
+            "installerIcon": "assets/icon.ico",
+            "uninstallerIcon": "assets/icon.ico",
+            "installerHeaderIcon": "assets/icon.ico",
+            "createDesktopShortcut": true,
+            "createStartMenuShortcut": true,
+            "shortcutName": "MatSouth Vacancy Tracker"
+        },
+        "publish": {
+            "provider": "generic",
+            "url": "https://updates.matsouth-vacancytracker.gov.zw"
+        }
+    }
+}

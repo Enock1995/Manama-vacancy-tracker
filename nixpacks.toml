@@ -1,0 +1,32 @@
+# nixpacks.toml — place this in your project ROOT (same level as composer.json)
+# Railway reads this file to build and start your app.
+
+[phases.setup]
+nixPkgs = ['nodejs_20']
+# Nixpacks auto-detects PHP from composer.json — we only need to add Node.js
+
+[phases.install]
+cmds = [
+    'composer install --no-dev --optimize-autoloader --no-interaction',
+    'npm ci --prefix frontend'
+]
+
+[phases.build]
+cmds = [
+    # Build the React SPA
+    'npm run build --prefix frontend',
+
+    # Copy built React app into Laravel public/ so both are served from one domain:
+    #   /            → React SPA (public/index.html)
+    #   /api/*       → Laravel API (public/index.php via PHP built-in server)
+    #   /assets/*    → Vite-built JS/CSS (public/assets/)
+    'cp -r frontend/dist/* public/',
+
+    # Ensure storage directories exist (needed on fresh containers)
+    'mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache',
+    'chmod -R 775 storage bootstrap/cache'
+]
+
+[start]
+# On every deploy: cache config → run migrations → seed reference data → serve
+cmd = 'php artisan config:cache && php artisan route:cache && php artisan migrate --force && php artisan db:seed --force && php artisan serve --host=0.0.0.0 --port=$PORT'
