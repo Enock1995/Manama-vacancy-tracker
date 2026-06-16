@@ -69,7 +69,7 @@ export default function LoginPage() {
                 </div>
 
                 <div className="absolute bottom-6 text-xs text-blue-600">
-                    Sir Enocks Cor Technologies · v1.0.0
+                    Tesl@hTee Technologies · v1.0.0
                 </div>
             </div>
 

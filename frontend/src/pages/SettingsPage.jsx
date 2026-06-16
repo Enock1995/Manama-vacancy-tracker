@@ -210,7 +210,7 @@ export default function SettingsPage() {
                     </div>
                     <div className="flex justify-between">
                         <span className="text-slate-500">Developer</span>
-                        <span>Sir Enocks Cor Technologies</span>
+                        <span>Tesl@hTee Technologies</span>
                     </div>
                     <div className="flex justify-between">
                         <span className="text-slate-500">Mode</span>

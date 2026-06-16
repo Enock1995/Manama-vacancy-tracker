@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "description": "Matabeleland South Province — Health Establishment Vacancy Tracker",
     "author": {
-        "name": "Sir Enocks Cor Technologies",
+        "name": "Tesl@hTee Technologies",
         "email": "dev@sirenocks.co.zw"
     },
     "main": "main.js",
@@ -25,7 +25,7 @@
     "build": {
         "appId": "zw.gov.matsouth.vacancytracker",
         "productName": "MatSouth Vacancy Tracker",
-        "copyright": "Copyright © 2024 Sir Enocks Cor Technologies",
+        "copyright": "Copyright © 2026 Tesl@hTee Technologies",
         "directories": {
             "output": "dist-electron"
         },

@@ -122,7 +122,7 @@ export default function Layout() {
 
                 {/* Footer */}
                 <footer className="bg-white border-t border-slate-100 px-6 py-2 text-xs text-slate-400 text-center shrink-0">
-                    Sir Enocks Cor Technologies · MatSouth Vacancy Tracker v1.0.0 · MOHCC Matabeleland South PHD
+                    Tesl@hTee Technologies · MatSouth Vacancy Tracker v1.0.0 · MOHCC Matabeleland South PHD
                 </footer>
             </div>
         </div>

@@ -1,8 +1,17 @@
+# Logs
 *.log
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Environment files
 .env
 .env.backup
 .env.production
+/auth.json
+
+# IDE/editor configs
 .phpactor.json
 .phpunit.result.cache
 /.fleet
@@ -11,17 +20,22 @@
 /.phpunit.cache
 /.vscode
 /.zed
-/auth.json
+
+# Dependencies
 /node_modules
+/vendor
+
+# Laravel build artifacts
 /public/build
 /public/hot
 /public/storage
 /storage/*.key
 /storage/pail
-/vendor
+
+# Homestead
 Homestead.json
 Homestead.yaml
-Thumbs.db
+
 # Ignore Electron binaries
-/electron/node_modules/electron/dist/electron.exe
 /electron/node_modules/
+/electron/node_modules/electron/dist/electron.exe
