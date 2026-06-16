@@ -63,7 +63,7 @@ export default function LoginPage() {
                     </p>
                     <div className="pt-4 space-y-2 text-xs text-blue-300">
                         <p>Ministry of Health and Child Care</p>
-                        <p>Provincial Health Directorate</p>
+                        <p>Provincial Medical Directorate</p>
                         <p>Zimbabwe</p>
                     </div>
                 </div>
@@ -158,7 +158,7 @@ export default function LoginPage() {
                     </div>
 
                     <p className="text-center text-xs text-slate-400 mt-4">
-                        MOHCC · Provincial Health Directorate · Matabeleland South
+                        MOHCC · Provincial Medical Directorate · Matabeleland South
                     </p>
                 </div>
             </div>

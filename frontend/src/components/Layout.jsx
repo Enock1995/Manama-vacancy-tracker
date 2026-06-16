@@ -99,7 +99,7 @@ export default function Layout() {
                 <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shrink-0 shadow-sm">
                     <div>
                         <p className="text-sm font-medium text-slate-700">
-                            Matabeleland South Province · Health Directorate
+                            Matabeleland South Province · Medical Directorate
                         </p>
                         <p className="text-xs text-slate-400">
                             {new Date().toLocaleDateString('en-GB', {
