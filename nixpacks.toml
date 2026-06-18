@@ -1,9 +1,10 @@
-# nixpacks.toml — place this in your project ROOT (same level as composer.json)
-# Railway reads this file to build and start your app.
+# nixpacks.toml — project root
+# config:clear is intentionally placed BEFORE config:cache to prevent
+# the MissingAppKeyException caused by a stale cached config from a
+# previous deployment where APP_KEY was not yet set.
 
 [phases.setup]
 nixPkgs = ['nodejs_20']
-# Nixpacks auto-detects PHP from composer.json — we only need to add Node.js
 
 [phases.install]
 cmds = [
@@ -13,20 +14,16 @@ cmds = [
 
 [phases.build]
 cmds = [
-    # Build the React SPA
+    # Build React SPA and merge into Laravel public/
     'npm run build --prefix frontend',
-
-    # Copy built React app into Laravel public/ so both are served from one domain:
-    #   /            → React SPA (public/index.html)
-    #   /api/*       → Laravel API (public/index.php via PHP built-in server)
-    #   /assets/*    → Vite-built JS/CSS (public/assets/)
     'cp -r frontend/dist/* public/',
 
-    # Ensure storage directories exist (needed on fresh containers)
+    # Ensure required storage directories exist on fresh containers
     'mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache',
     'chmod -R 775 storage bootstrap/cache'
 ]
 
 [start]
-# On every deploy: cache config → run migrations → seed reference data → serve
-cmd = 'php artisan config:cache && php artisan route:cache && php artisan migrate --force && php artisan db:seed --force && php artisan serve --host=0.0.0.0 --port=$PORT'
+# config:clear FIRST — deletes any stale bootstrap/cache/config.php from previous deploys
+# config:cache SECOND — re-caches with the correct APP_KEY now available from Railway env vars
+cmd = 'php artisan config:clear && php artisan config:cache && php artisan route:cache && php artisan migrate --force && php artisan db:seed --force && php artisan serve --host=0.0.0.0 --port=$PORT'
