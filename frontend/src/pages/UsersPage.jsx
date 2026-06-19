@@ -1,384 +1,436 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { userAPI, referenceAPI } from '../services/api';
+import { useState, useEffect } from 'react';
+import { usersAPI, referenceAPI } from '../services/api';
 import { PageHeader, Card, Button, Spinner } from '../components/ui';
 
-const ROLE_META = {
-    provincial_admin: { label: 'Provincial Admin', cls: 'bg-purple-100 text-purple-800' },
-    district_user:    { label: 'District User',    cls: 'bg-blue-100 text-blue-800' },
-    facility_user:    { label: 'Facility User',    cls: 'bg-green-100 text-green-800' },
-};
-
-const RoleBadge = ({ role }) => {
-    const { label, cls } = ROLE_META[role] || { label: role || '—', cls: 'bg-gray-100 text-gray-700' };
-    return (
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cls}`}>
-            {label}
-        </span>
-    );
-};
+const ROLES = [
+    { value: 'facility_user',    label: 'Facility User' },
+    { value: 'district_user',    label: 'District User' },
+    { value: 'provincial_admin', label: 'Provincial Admin' },
+];
 
 const EMPTY_FORM = {
-    name: '', email: '', password: '',
-    role: 'facility_user', district_id: '', facility_id: '', is_active: true,
+    name: '', email: '', password: '', role: 'facility_user',
+    facility_id: '', district_id: '',
 };
 
 export default function UsersPage() {
-    const [users,      setUsers]      = useState([]);
-    const [districts,  setDistricts]  = useState([]);
+    const [users, setUsers]           = useState([]);
+    const [districts, setDistricts]   = useState([]);
     const [facilities, setFacilities] = useState([]);
-    const [loading,    setLoading]    = useState(true);
-    const [error,      setError]      = useState('');
-    const [showModal,  setShowModal]  = useState(false);
-    const [editing,    setEditing]    = useState(null);   // null = create mode
-    const [form,       setForm]       = useState(EMPTY_FORM);
-    const [saving,     setSaving]     = useState(false);
-    const [saveError,  setSaveError]  = useState('');
-    const [togglingId, setTogglingId] = useState(null);
+    const [loading, setLoading]       = useState(true);
+    const [showModal, setShowModal]   = useState(false);
+    const [editUser, setEditUser]     = useState(null);
+    const [form, setForm]             = useState(EMPTY_FORM);
+    const [saving, setSaving]         = useState(false);
+    const [errors, setErrors]         = useState({});
+    const [successMsg, setSuccessMsg] = useState('');
 
-    // ─── Load users + reference data ──────────────────────────────────────────
-    const loadData = useCallback(async () => {
+    useEffect(() => {
+        loadAll();
+    }, []);
+
+    const loadAll = async () => {
         setLoading(true);
-        setError('');
         try {
             const [usersRes, refRes] = await Promise.all([
-                userAPI.getAll(),
+                usersAPI.list(),
                 referenceAPI.getAll(),
             ]);
-
-            setUsers(usersRes.data?.data ?? usersRes.data ?? []);
-
-            // Handle both response shapes: res.data.data.X  OR  res.data.X
-            const ref = refRes.data?.data ?? refRes.data ?? {};
-            setDistricts(Array.isArray(ref.districts)  ? ref.districts  : []);
-            setFacilities(Array.isArray(ref.facilities) ? ref.facilities : []);
-        } catch {
-            setError('Failed to load users. Please refresh the page.');
+            setUsers(usersRes.data.data);
+            // Store districts and facilities separately for reliable access
+            setDistricts(refRes.data.data?.districts ?? []);
+            setFacilities(refRes.data.data?.facilities ?? []);
+        } catch (err) {
+            console.error('Failed to load users page data:', err);
         } finally {
             setLoading(false);
         }
-    }, []);
+    };
 
-    useEffect(() => { loadData(); }, [loadData]);
-
-    // ─── Modal helpers ────────────────────────────────────────────────────────
     const openCreate = () => {
-        setEditing(null);
+        setEditUser(null);
         setForm(EMPTY_FORM);
-        setSaveError('');
+        setErrors({});
+        setSuccessMsg('');
         setShowModal(true);
     };
 
     const openEdit = (user) => {
-        setEditing(user);
+        setEditUser(user);
         setForm({
-            name:        user.name  || '',
-            email:       user.email || '',
+            name:        user.name        ?? '',
+            email:       user.email       ?? '',
             password:    '',
-            role:        user.role  || 'facility_user',
-            district_id: user.district_id?.toString() || '',
-            facility_id: user.facility_id?.toString() || '',
-            is_active:   user.is_active !== false,
+            role:        user.role        ?? 'facility_user',
+            facility_id: user.facility?.id ?? user.facility_id ?? '',
+            district_id: user.district?.id ?? user.district_id ?? '',
         });
-        setSaveError('');
+        setErrors({});
+        setSuccessMsg('');
         setShowModal(true);
     };
 
-    // ─── Save (create or update) ──────────────────────────────────────────────
-    const handleSave = async () => {
-        if (!form.name.trim())  return setSaveError('Name is required.');
-        if (!form.email.trim()) return setSaveError('Email is required.');
-        if (!editing && !form.password) return setSaveError('Password is required for new users.');
-
+    const handleSave = async (e) => {
+        e.preventDefault();
         setSaving(true);
-        setSaveError('');
+        setErrors({});
+        setSuccessMsg('');
+
+        // Build clean payload
+        const payload = {
+            name:  form.name.trim(),
+            email: form.email.trim(),
+            role:  form.role,
+        };
+
+        // Only include password if filled
+        if (form.password.trim()) {
+            payload.password = form.password;
+        }
+
+        // Assign facility or district based on role
+        if (form.role === 'facility_user' && form.facility_id) {
+            payload.facility_id = parseInt(form.facility_id);
+        }
+        if (form.role === 'district_user' && form.district_id) {
+            payload.district_id = parseInt(form.district_id);
+        }
+
         try {
-            const payload = {
-                name:        form.name,
-                email:       form.email,
-                role:        form.role,
-                is_active:   form.is_active,
-                district_id: ['district_user', 'facility_user'].includes(form.role) && form.district_id
-                                 ? form.district_id : null,
-                facility_id: form.role === 'facility_user' && form.facility_id
-                                 ? form.facility_id : null,
-            };
-            if (form.password) payload.password = form.password;
-
-            if (editing) {
-                await userAPI.update(editing.id, payload);
+            if (editUser) {
+                await usersAPI.update(editUser.id, payload);
+                setSuccessMsg('User updated successfully.');
             } else {
-                await userAPI.create({ ...payload, password: form.password });
+                // Password is required for new users
+                if (!form.password.trim()) {
+                    setErrors({ password: ['Password is required for new users.'] });
+                    setSaving(false);
+                    return;
+                }
+                await usersAPI.create(payload);
+                setSuccessMsg('User created successfully.');
             }
-
-            setShowModal(false);
-            await loadData();
+            await loadAll();
+            setTimeout(() => {
+                setShowModal(false);
+                setSuccessMsg('');
+            }, 1200);
         } catch (err) {
-            setSaveError(
-                err.response?.data?.message ||
-                err.response?.data?.error   ||
-                `Save failed (HTTP ${err.response?.status ?? 'network error'})`
-            );
+            console.error('Save user error:', err.response?.data);
+            if (err.response?.data?.errors) {
+                setErrors(err.response.data.errors);
+            } else if (err.response?.data?.message) {
+                setErrors({ general: err.response.data.message });
+            } else {
+                setErrors({ general: `Save failed (HTTP ${err.response?.status ?? 'unknown'}). Check console.` });
+            }
         } finally {
             setSaving(false);
         }
     };
 
-    // ─── Toggle active ────────────────────────────────────────────────────────
-    const handleToggle = async (userId) => {
-        setTogglingId(userId);
+    const handleToggleActive = async (user) => {
+        if (!confirm(`${user.is_active ? 'Deactivate' : 'Activate'} ${user.name}?`)) return;
         try {
-            await userAPI.toggleActive(userId);
-            await loadData();
-        } catch {
-            // silent — UI stays consistent on next loadData
-        } finally {
-            setTogglingId(null);
+            await usersAPI.toggleActive(user.id);
+            await loadAll();
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to update user status.');
         }
     };
 
-    // ─── Derived state ────────────────────────────────────────────────────────
-    const filteredFacilities = form.district_id
-        ? facilities.filter(f => f.district_id?.toString() === form.district_id)
-        : facilities;
+    const set = (k, v) => {
+        setForm(f => ({ ...f, [k]: v }));
+        if (errors[k]) setErrors(e => ({ ...e, [k]: null }));
+    };
 
-    const needsDistrict  = ['district_user', 'facility_user'].includes(form.role);
-    const needsFacility  = form.role === 'facility_user';
-
-    // ─── Render ───────────────────────────────────────────────────────────────
-    if (loading) return (
-        <div className="flex items-center justify-center h-64">
-            <Spinner size="lg" />
-            <span className="ml-3 text-gray-500">Loading users...</span>
-        </div>
+    const errMsg = (name) => errors[name] && (
+        <p className="text-xs text-red-600 mt-1">
+            {Array.isArray(errors[name]) ? errors[name][0] : errors[name]}
+        </p>
     );
 
+    const inputClass = (name) =>
+        `w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+            errors[name] ? 'border-red-400 bg-red-50' : 'border-slate-300'
+        }`;
+
+    const roleColor = {
+        provincial_admin: 'bg-purple-100 text-purple-800',
+        district_user:    'bg-blue-100 text-blue-800',
+        facility_user:    'bg-green-100 text-green-800',
+    };
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-5">
             <PageHeader
                 title="User Management"
-                subtitle={`${users.length} registered user${users.length !== 1 ? 's' : ''}`}
-                action={<Button onClick={openCreate} variant="primary">+ Add User</Button>}
+                subtitle="Manage system users and their access levels"
+                actions={<Button onClick={openCreate}>+ Add User</Button>}
             />
 
-            {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{error}</div>
-            )}
-
-            {/* ── Users Table ─────────────────────────────────────────────── */}
             <Card>
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                {['Name', 'Email', 'Role', 'District', 'Facility', 'Status', 'Actions'].map(h => (
-                                    <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        {h}
-                                    </th>
+                {loading ? (
+                    <div className="flex justify-center py-12"><Spinner size="lg" /></div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="text-xs text-slate-500 uppercase tracking-wide bg-slate-50 text-left">
+                                    <th className="px-3 py-3">Name</th>
+                                    <th className="px-3 py-3">Email</th>
+                                    <th className="px-3 py-3">Role</th>
+                                    <th className="px-3 py-3">Facility</th>
+                                    <th className="px-3 py-3">District</th>
+                                    <th className="px-3 py-3">Status</th>
+                                    <th className="px-3 py-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {users.map(user => (
+                                    <tr
+                                        key={user.id}
+                                        className={`hover:bg-slate-50 ${!user.is_active ? 'opacity-50' : ''}`}
+                                    >
+                                        <td className="px-3 py-2.5 font-medium text-slate-800">{user.name}</td>
+                                        <td className="px-3 py-2.5 text-slate-500">{user.email}</td>
+                                        <td className="px-3 py-2.5">
+                                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleColor[user.role] ?? 'bg-slate-100 text-slate-600'}`}>
+                                                {user.role?.replace(/_/g, ' ')}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-slate-500 text-xs">
+                                            {user.facility?.name ?? '—'}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-slate-500 text-xs">
+                                            {user.district?.name ?? '—'}
+                                        </td>
+                                        <td className="px-3 py-2.5">
+                                            <span className={`text-xs font-medium ${user.is_active ? 'text-green-600' : 'text-red-500'}`}>
+                                                {user.is_active ? '● Active' : '● Inactive'}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2.5">
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => openEdit(user)}
+                                                    className="text-xs text-blue-600 hover:underline"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <span className="text-slate-300">·</span>
+                                                <button
+                                                    onClick={() => handleToggleActive(user)}
+                                                    className={`text-xs hover:underline ${user.is_active ? 'text-red-500' : 'text-green-600'}`}
+                                                >
+                                                    {user.is_active ? 'Deactivate' : 'Activate'}
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
                                 ))}
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {users.length === 0 ? (
-                                <tr>
-                                    <td colSpan={7} className="px-5 py-12 text-center text-gray-400">
-                                        No users found. Click "+ Add User" to create one.
-                                    </td>
-                                </tr>
-                            ) : users.map(user => (
-                                <tr key={user.id} className={`hover:bg-gray-50 transition-colors ${!user.is_active ? 'opacity-60' : ''}`}>
-                                    <td className="px-5 py-4 text-sm font-medium text-gray-900 whitespace-nowrap">
-                                        {user.name}
-                                    </td>
-                                    <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">
-                                        {user.email}
-                                    </td>
-                                    <td className="px-5 py-4 whitespace-nowrap">
-                                        <RoleBadge role={user.role} />
-                                    </td>
-                                    <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">
-                                        {user.district?.name || '—'}
-                                    </td>
-                                    <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">
-                                        {user.facility?.name || '—'}
-                                    </td>
-                                    <td className="px-5 py-4 whitespace-nowrap">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                            user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                        }`}>
-                                            {user.is_active ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </td>
-                                    <td className="px-5 py-4 whitespace-nowrap text-sm space-x-3">
-                                        <button onClick={() => openEdit(user)}
-                                            className="text-indigo-600 hover:text-indigo-900 font-medium">
-                                            Edit
-                                        </button>
-                                        <button
-                                            onClick={() => handleToggle(user.id)}
-                                            disabled={togglingId === user.id}
-                                            className={`font-medium ${
-                                                user.is_active
-                                                    ? 'text-red-600 hover:text-red-900'
-                                                    : 'text-green-600 hover:text-green-900'
-                                            } disabled:opacity-50`}>
-                                            {togglingId === user.id ? '...' : (user.is_active ? 'Deactivate' : 'Activate')}
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                                {users.length === 0 && (
+                                    <tr>
+                                        <td colSpan={7} className="text-center py-8 text-slate-400 text-sm">
+                                            No users found.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </Card>
 
-            {/* ── Create / Edit Modal ──────────────────────────────────────── */}
+            {/* ── MODAL ── */}
             {showModal && (
-                <div className="fixed inset-0 bg-gray-700 bg-opacity-50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+
                         {/* Header */}
-                        <div className="px-6 py-4 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-900">
-                                {editing ? `Edit User — ${editing.name}` : 'Add New User'}
-                            </h3>
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
+                            <h2 className="font-bold text-slate-800">
+                                {editUser ? `Edit — ${editUser.name}` : 'Create New User'}
+                            </h2>
+                            <button
+                                onClick={() => setShowModal(false)}
+                                className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+                            >
+                                ×
+                            </button>
                         </div>
 
-                        {/* Body */}
-                        <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
-                            {saveError && (
-                                <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
-                                    {saveError}
+                        <form onSubmit={handleSave} className="p-6 space-y-4">
+
+                            {/* General error */}
+                            {errors.general && (
+                                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
+                                    ⚠️ {errors.general}
+                                </div>
+                            )}
+
+                            {/* Success */}
+                            {successMsg && (
+                                <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-3 py-2 text-sm">
+                                    ✅ {successMsg}
                                 </div>
                             )}
 
                             {/* Name */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Full Name <span className="text-red-500">*</span>
-                                </label>
-                                <input type="text" value={form.name}
-                                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    placeholder="e.g. Sibusiso Moyo" />
+                                <label className="label">Full Name *</label>
+                                <input
+                                    type="text"
+                                    value={form.name}
+                                    onChange={e => set('name', e.target.value)}
+                                    className={inputClass('name')}
+                                    placeholder="e.g. Thembinkosi Dube"
+                                    required
+                                />
+                                {errMsg('name')}
                             </div>
 
                             {/* Email */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Email Address <span className="text-red-500">*</span>
-                                </label>
-                                <input type="email" value={form.email}
-                                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    placeholder="user@matsouth.gov.zw" />
+                                <label className="label">Email Address *</label>
+                                <input
+                                    type="email"
+                                    value={form.email}
+                                    onChange={e => set('email', e.target.value)}
+                                    className={inputClass('email')}
+                                    placeholder="user@matsouth.gov.zw"
+                                    required
+                                />
+                                {errMsg('email')}
                             </div>
 
                             {/* Password */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Password {!editing && <span className="text-red-500">*</span>}
-                                    {editing && <span className="text-gray-400 font-normal text-xs ml-1">(leave blank to keep current)</span>}
+                                <label className="label">
+                                    Password {editUser ? '(leave blank to keep current)' : '*'}
                                 </label>
-                                <input type="password" value={form.password}
-                                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    placeholder={editing ? 'Leave blank to keep unchanged' : 'Minimum 8 characters'} />
+                                <input
+                                    type="password"
+                                    value={form.password}
+                                    onChange={e => set('password', e.target.value)}
+                                    className={inputClass('password')}
+                                    placeholder="Minimum 8 characters"
+                                    minLength={8}
+                                    required={!editUser}
+                                />
+                                {errMsg('password')}
                             </div>
 
                             {/* Role */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    System Role <span className="text-red-500">*</span>
-                                </label>
-                                <select value={form.role}
-                                    onChange={e => setForm(f => ({ ...f, role: e.target.value, district_id: '', facility_id: '' }))}
-                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                                    <option value="facility_user">Facility User — own facility only</option>
-                                    <option value="district_user">District User — all facilities in district</option>
-                                    <option value="provincial_admin">Provincial Admin — full access</option>
+                                <label className="label">Role *</label>
+                                <select
+                                    value={form.role}
+                                    onChange={e => {
+                                        set('role', e.target.value);
+                                        // Clear scope fields when role changes
+                                        set('facility_id', '');
+                                        set('district_id', '');
+                                    }}
+                                    className={inputClass('role')}
+                                    required
+                                >
+                                    {ROLES.map(r => (
+                                        <option key={r.value} value={r.value}>{r.label}</option>
+                                    ))}
                                 </select>
+                                {errMsg('role')}
                             </div>
 
-                            {/* District — facility_user and district_user only */}
-                            {needsDistrict && (
+                            {/* Facility — shown for facility_user only */}
+                            {form.role === 'facility_user' && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        District <span className="text-red-500">*</span>
-                                        <span className="text-gray-400 font-normal text-xs ml-1">
+                                    <label className="label">
+                                        Facility *
+                                        <span className="ml-1 text-slate-400 normal-case font-normal">
+                                            ({facilities.length} available)
+                                        </span>
+                                    </label>
+                                    <select
+                                        value={form.facility_id}
+                                        onChange={e => set('facility_id', e.target.value)}
+                                        className={inputClass('facility_id')}
+                                        required
+                                    >
+                                        <option value="">Select facility...</option>
+                                        {facilities.map(f => (
+                                            <option key={f.id} value={f.id}>
+                                                {f.name} — {f.district?.name ?? ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {errMsg('facility_id')}
+                                </div>
+                            )}
+
+                            {/* District — shown for district_user only */}
+                            {form.role === 'district_user' && (
+                                <div>
+                                    <label className="label">
+                                        District *
+                                        <span className="ml-1 text-slate-400 normal-case font-normal">
                                             ({districts.length} available)
                                         </span>
                                     </label>
-                                    {districts.length === 0 ? (
-                                        <p className="text-sm text-red-500 mt-1">
-                                            Districts not loaded — please refresh the page.
+                                    <select
+                                        value={form.district_id}
+                                        onChange={e => set('district_id', e.target.value)}
+                                        className={inputClass('district_id')}
+                                        required
+                                    >
+                                        <option value="">Select district...</option>
+                                        {districts.map(d => (
+                                            <option key={d.id} value={d.id}>
+                                                {d.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {errMsg('district_id')}
+                                    {districts.length === 0 && (
+                                        <p className="text-xs text-orange-600 mt-1">
+                                            ⚠️ No districts loaded. Check your API connection.
                                         </p>
-                                    ) : (
-                                        <select value={form.district_id}
-                                            onChange={e => setForm(f => ({ ...f, district_id: e.target.value, facility_id: '' }))}
-                                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                                            <option value="">— Select District —</option>
-                                            {districts.map(d => (
-                                                <option key={d.id} value={d.id.toString()}>{d.name}</option>
-                                            ))}
-                                        </select>
                                     )}
                                 </div>
                             )}
 
-                            {/* Facility — facility_user only */}
-                            {needsFacility && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Facility <span className="text-red-500">*</span>
-                                        <span className="text-gray-400 font-normal text-xs ml-1">
-                                            ({filteredFacilities.length} available
-                                            {form.district_id ? ' in selected district' : ''})
-                                        </span>
-                                    </label>
-                                    {facilities.length === 0 ? (
-                                        <p className="text-sm text-red-500 mt-1">
-                                            Facilities not loaded — please refresh the page.
-                                        </p>
-                                    ) : (
-                                        <select value={form.facility_id}
-                                            onChange={e => setForm(f => ({ ...f, facility_id: e.target.value }))}
-                                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                                            <option value="">— Select Facility —</option>
-                                            {filteredFacilities.map(f => (
-                                                <option key={f.id} value={f.id.toString()}>{f.name}</option>
-                                            ))}
-                                        </select>
-                                    )}
-                                </div>
-                            )}
+                            {/* Role hint */}
+                            <div className="bg-slate-50 rounded-lg px-3 py-2 text-xs text-slate-500">
+                                {form.role === 'facility_user'    && '🏥 Facility User: can only view and manage posts for their assigned facility.'}
+                                {form.role === 'district_user'    && '📍 District User: can view and manage posts across all facilities in their district.'}
+                                {form.role === 'provincial_admin' && '🌍 Provincial Admin: full access to all districts, facilities, users and reports.'}
+                            </div>
 
-                            {/* Active toggle — edit mode only */}
-                            {editing && (
-                                <div className="flex items-center gap-3 pt-1">
-                                    <input type="checkbox" id="is_active" checked={form.is_active}
-                                        onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))}
-                                        className="h-4 w-4 text-indigo-600 border-gray-300 rounded" />
-                                    <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
-                                        Account is active
-                                    </label>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-                            <button onClick={() => setShowModal(false)} disabled={saving}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50">
-                                Cancel
-                            </button>
-                            <button onClick={handleSave} disabled={saving}
-                                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
-                                {saving && <Spinner size="sm" />}
-                                {saving ? 'Saving...' : (editing ? 'Save Changes' : 'Create User')}
-                            </button>
-                        </div>
+                            {/* Buttons */}
+                            <div className="flex justify-end gap-3 pt-2">
+                                <Button variant="outline" type="button" onClick={() => setShowModal(false)}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={saving}>
+                                    {saving ? 'Saving...' : editUser ? '💾 Save Changes' : '✅ Create User'}
+                                </Button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
+
+            <style>{`
+                .label {
+                    display: block;
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                    color: #475569;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    margin-bottom: 0.375rem;
+                }
+            `}</style>
         </div>
     );
 }
